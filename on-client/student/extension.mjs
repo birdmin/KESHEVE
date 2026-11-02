@@ -46,8 +46,11 @@ export function createStudentView() {
             : '오류 메시지가 제공되지 않았습니다.';
           const label = code === 'CONTRACT_MISMATCH' || code === 'ENGINE_RESULT_UNVERIFIED'
             ? '확인 불가'
-            : '연결 실패';
+            : code === 'ENGINE_NOT_CONNECTED' ? '서버 연결 어댑터 미연결' : '연결 실패';
           appendText(section, 'p', `${label}: ${message}`);
+          if (code === 'ENGINE_NOT_CONNECTED') {
+            appendText(section, 'p', '서버 연결 어댑터가 준비되지 않아 실제 사용자·기기·세션 자료를 조회하지 못했습니다. 이는 접근 거부나 자료 없음 판정이 아닙니다. 담당자에게 서버 연결 어댑터 경로와 실행 설정을 확인해 달라고 요청하세요.');
+          }
         } else if (resource.status === 'ok') {
           renderData(section, resource.data);
         } else {
@@ -381,11 +384,17 @@ export function createStudentView() {
           appendText(section, 'p', `${title}을(를) 불러오는 중입니다.`);
         } else if (resource.status === 'error') {
           const code = resource.error?.code;
-          const label = code === 'CONTRACT_MISMATCH' || code === 'ENGINE_RESULT_UNVERIFIED' ? '확인 불가' : '조회 실패';
+          const label = code === 'CONTRACT_MISMATCH' || code === 'ENGINE_RESULT_UNVERIFIED'
+            ? '확인 불가'
+            : code === 'ENGINE_NOT_CONNECTED' ? '서버 연결 어댑터 미연결' : '조회 실패';
           appendText(section, 'p', `${title} ${label}.`);
           const codeLabel = typeof code === 'string' && code ? ` (${code})` : '';
           appendText(section, 'p', `오류${codeLabel}: ${errorMessage(resource)}`);
-          retryGuidance(resource, title);
+          if (code === 'ENGINE_NOT_CONNECTED') {
+            appendText(section, 'p', '실제 서버 자료를 조회하지 못한 상태입니다. 기기·세션이 없거나 접근이 거부됐다는 뜻이 아닙니다. 담당자에게 서버 연결 어댑터 경로와 실행 설정을 확인해 달라고 요청하세요. 다시 불러오기만으로 연결이 복구된다고 보장할 수 없습니다.');
+          } else {
+            retryGuidance(resource, title);
+          }
         } else if (resource.status === 'ok' && Array.isArray(resource.data)) {
           if (resource.data.length === 0) {
             appendText(section, 'p', type === 'devices' ? '등록된 기기가 없음' : '현재 연결 없음');
@@ -469,8 +478,13 @@ export function createStudentView() {
       if (!diagnostics || diagnostics.status === 'loading') {
         appendText(diagnosticsSection, 'p', '진단 정보를 불러오는 중입니다.');
       } else if (diagnostics.status === 'error') {
-        appendText(diagnosticsSection, 'p', `진단 정보를 불러오지 못했습니다. ${errorMessage(diagnostics)}`);
-        appendText(diagnosticsSection, 'p', '다시 시도하려면 「도움정보 불러오기」 버튼을 직접 누르세요.');
+        if (diagnostics.error?.code === 'ENGINE_NOT_CONNECTED') {
+          appendText(diagnosticsSection, 'p', '서버 연결 어댑터 미연결 (ENGINE_NOT_CONNECTED)');
+          appendText(diagnosticsSection, 'p', '진단 정보를 실제 서버에서 가져오지 못했습니다. 담당자에게 서버 연결 어댑터 경로와 실행 설정을 확인해 달라고 요청하세요.');
+        } else {
+          appendText(diagnosticsSection, 'p', `진단 정보를 불러오지 못했습니다. ${errorMessage(diagnostics)}`);
+          appendText(diagnosticsSection, 'p', '다시 시도하려면 「도움정보 불러오기」 버튼을 직접 누르세요.');
+        }
       } else if (diagnostics.status === 'ok') {
         const { list, safeInfo } = diagnosticsFields(diagnostics.data);
         if (list.childNodes.length === 0) appendText(diagnosticsSection, 'p', '표시할 수 있는 안전한 진단 정보가 없습니다.');
