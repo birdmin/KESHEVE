@@ -1,9 +1,28 @@
 // 이 파일은 학생이 같은 프로젝트에서 이어서 구현합니다.
 // 제공 UI를 받은 것만으로 단계 완료를 인정하지 않습니다.
-const pcStatusHistory = [];
-export function createStudentView() {
+export function createStudentView({ refresh, onChange } = {}) {
   const eventFilters = { kind: 'all', appId: 'all', access: 'all' };
   let selectedEventId = null;
+  let refreshing = false;
+  let refreshMessage = '';
+
+  const requestRefresh = async () => {
+    if (refreshing || typeof refresh !== 'function') return;
+
+    refreshing = true;
+    refreshMessage = '사용자·기기·세션·업무 앱·보안 기록을 다시 조회하고 있습니다.';
+    onChange?.();
+
+    try {
+      await refresh();
+      refreshMessage = '조회 요청이 끝났습니다. 각 항목의 결과를 확인하세요.';
+    } catch {
+      refreshMessage = '다시 조회하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도하세요.';
+    } finally {
+      refreshing = false;
+      onChange?.();
+    }
+  };
   return {
     renderIdentity({ me, devices, sessions } = {}) {
       const root = document.createElement('section');
@@ -347,6 +366,20 @@ export function createStudentView() {
         parent.append(node);
         return node;
       };
+      const refreshButton = document.createElement('button');
+      refreshButton.type = 'button';
+      refreshButton.className = 'btn';
+      refreshButton.textContent = refreshing ? '조회 중…' : '다시 조회';
+      refreshButton.disabled = refreshing || typeof refresh !== 'function';
+      refreshButton.setAttribute('aria-label', '사용자, 기기, 세션, 업무 앱, 보안 기록 다시 조회');
+      refreshButton.addEventListener('click', requestRefresh);
+
+      const refreshStatus = document.createElement('p');
+      refreshStatus.setAttribute('role', 'status');
+      refreshStatus.setAttribute('aria-live', 'polite');
+      refreshStatus.textContent = refreshMessage;
+
+      root.append(refreshButton, refreshStatus);
       const modeLabel = (value) => ({
         connected: '연결됨 (connected)',
         demo: '예제 자료 (demo)',
@@ -513,226 +546,8 @@ export function createStudentView() {
         appendText(diagnosticsSection, 'p', '확인 불가: 진단 정보 조회 상태를 확인할 수 없습니다.');
       }
       root.append(diagnosticsSection);
-      root.append(this.renderPcTimeline());
       return root;
     },
-    renderPcTimeline() {
-  const root = document.createElement('section');
-
-  const add = (parent, tag, value) => {
-    const node = document.createElement(tag);
-    node.textContent = String(value);
-    parent.append(node);
-    return node;
-  };
-
-  const names = {
-    cpu: 'CPU',
-    memory: '메모리',
-    disk: '디스크'
-  };
-
-  const reasons = {
-    permission_denied: '읽기 권한이 없습니다.',
-    unsupported: '지원하지 않는 운영체제입니다.',
-    timeout: '조회 시간이 초과됐습니다.',
-    query_failed: '측정 조회에 실패했습니다.',
-    invalid_response: '응답 값이 유효하지 않습니다.',
-    invalid_sample: 'CPU 측정 표본이 유효하지 않습니다.',
-    cancelled: '조회가 취소됐습니다.'
-  };
-
-  let filter = 'all';
-  let busy = false;
-
-  const list = document.createElement('ol');
-  const count = add(root, 'p', '측정 기록: 0건');
-  const label = add(root, 'label', '기록 종류 ');
-
-  const select = document.createElement('select');
-  select.setAttribute('aria-label', 'PC 상태 기록 종류');
-
-  for (const [value, title] of [
-    ['all', '전체'],
-    ...Object.entries(names)
-  ]) {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = title;
-    select.append(option);
-  }
-
-  select.addEventListener('change', () => {
-    filter = select.value;
-    draw();
-  });
-
-  label.append(select);
-
-  const status = add(root, 'p', '측정 기록을 불러오는 중입니다.');
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.textContent = 'PC 상태 다시 측정';
-
-  const section = document.createElement('section');
-  add(section, 'h3', '조회 시각순 측정 기록');
-  section.append(list);
-
-  root.append(button, section);
-
-  const value = (key, metric) => {
-    if (metric?.state !== 'ok') {
-      const reason = typeof metric?.reason === 'string'
-        ? metric.reason
-        : 'unknown';
-
-      return `확인 불가 — ${
-        reasons[reason] || '값을 확인하지 못했습니다.'
-      } (원인: ${reason})`;
-    }
-
-    if (
-      key === 'cpu' &&
-      Number.isFinite(metric.usagePercent) &&
-      metric.usagePercent >= 0 &&
-      metric.usagePercent <= 100
-    ) {
-      return `${metric.usagePercent.toFixed(1)}% 사용`;
-    }
-
-    if (
-      key === 'memory' &&
-      Number.isFinite(metric.usedBytes) &&
-      Number.isFinite(metric.totalBytes) &&
-      metric.totalBytes > 0 &&
-      metric.usedBytes >= 0 &&
-      metric.usedBytes <= metric.totalBytes
-    ) {
-      return `${(metric.usedBytes / 1024 ** 3).toFixed(1)} GB / ${
-        (metric.totalBytes / 1024 ** 3).toFixed(1)
-      } GB 사용`;
-    }
-
-    if (
-      key === 'disk' &&
-      Number.isFinite(metric.freeBytes) &&
-      Number.isFinite(metric.totalBytes) &&
-      metric.totalBytes > 0 &&
-      metric.freeBytes >= 0 &&
-      metric.freeBytes <= metric.totalBytes
-    ) {
-      return `${(metric.freeBytes / 1024 ** 3).toFixed(1)} GB 남음 / ${
-        (metric.totalBytes / 1024 ** 3).toFixed(1)
-      } GB 전체`;
-    }
-
-    return '확인 불가 — 값 또는 단위를 검증할 수 없습니다.';
-  };
-
-  const draw = () => {
-    list.replaceChildren();
-
-    const rows = pcStatusHistory.flatMap(entry =>
-      (filter === 'all'
-        ? ['cpu', 'memory', 'disk']
-        : [filter]
-      ).map(key => ({ entry, key }))
-    );
-
-    count.textContent =
-      `측정 항목 ${rows.length}건 · 조회 ${pcStatusHistory.length}회`;
-
-    if (!rows.length) {
-      add(list, 'li', '선택한 종류의 기록이 없습니다.');
-    }
-
-    for (const { entry, key } of rows) {
-      const item = document.createElement('li');
-
-      add(item, 'p',
-        `${names[key]} · 측정 시각: ${entry.at}`
-      );
-
-      add(item, 'p',
-        `결과: ${value(key, entry.metrics?.[key])}`
-      );
-
-      list.append(item);
-    }
-  };
-
-  const read = async () => {
-    if (busy) return;
-
-    busy = true;
-    button.disabled = true;
-    status.textContent =
-      '이 PC의 CPU·메모리·디스크 측정 중입니다.';
-
-    try {
-      const response = await fetch('/api/pc/status', {
-        cache: 'no-store'
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP_${response.status}`);
-      }
-
-      const result = await response.json();
-      const data = result?.ok === true ? result.data : null;
-
-      const stamp =
-        typeof data?.measuredAt === 'string' &&
-        /(?:Z|[+-]\d{2}:\d{2})$/.test(data.measuredAt)
-          ? Date.parse(data.measuredAt)
-          : NaN;
-
-      if (
-        data?.schema !== 'aleph.on.pc-status.v1' ||
-        data.source !== 'local-pc' ||
-        !Number.isFinite(stamp)
-      ) {
-        throw new Error('INVALID_OR_UNVERIFIED_RESPONSE');
-      }
-
-      pcStatusHistory.unshift({
-        at: new Date(stamp).toLocaleString('ko-KR'),
-        metrics: data.metrics || {}
-      });
-
-      if (pcStatusHistory.length > 40) {
-        pcStatusHistory.length = 40;
-      }
-
-      status.textContent =
-        '실제 PC 조회 응답을 기록했습니다. 항목별 성공 여부는 각 결과에서 확인하세요.';
-
-      draw();
-
-    } catch (error) {
-      status.textContent =
-        `이번 조회는 기록하지 못했습니다. 확인 불가 — ${
-          error?.message || 'UNKNOWN_ERROR'
-        }.`;
-    } finally {
-      busy = false;
-      button.disabled = false;
-    }
-  };
-
-  button.addEventListener('click', read);
-
-  if (pcStatusHistory.length) {
-    status.textContent =
-      '앱 실행 중 메모리에 보관된 기록입니다. 앱 종료 시 사라집니다.';
-    draw();
-  } else {
-    void read();
-  }
-
-  return root;
-},
     renderVulnerabilities({ status, mode, data, error } = {}) {
       const root = document.createElement('section');
       const appendText = (parent, tag, value) => {

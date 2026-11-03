@@ -1374,7 +1374,11 @@ async function loadStudentModule() {
   try {
     const mod = await import(STUDENT_MODULE);
     if (typeof mod.createStudentView !== 'function') throw new Error('missing export');
-    studentView = mod.createStudentView({ api: studentApi, onChange: () => renderAllStudent() }) || null;
+    studentView = mod.createStudentView({
+  api: studentApi,
+  onChange: () => renderAllStudent(),
+  refresh: () => loadAll(),
+}) || null;
   } catch {
     studentView = null;
     studentLoadFailed = true;
