@@ -444,7 +444,7 @@ function renderMode() {
   else delete badge.dataset.uiMode;
   if (hold) badge.dataset.refresh = 'checking';
   else delete badge.dataset.refresh;
-  badge.textContent = local ? '내 PC 점검 모드' : hold ? '실행 형태 확인 중…' : MODE_LABELS[mode];
+  badge.textContent = local ? '내 PC 점검 모드' : hold ? '실행 형태 확인 중…' : `SDP 보안 엔진 · ${MODE_LABELS[mode]}`;
   $('checked-at').textContent = state.checkedAt ? `확인 시각 ${formatTime(state.checkedAt)}` : '';
   renderLocalPcMode(local, hold);
   renderStudent('status');
@@ -695,7 +695,7 @@ async function loadConnectModule() {
   try {
     aiConnectModule = await import('/ai-connect.mjs');
     aiConnect = aiConnectModule.createAiConnectController({ onChange: () => renderAiConnect() });
-    // 만들기만 한다. 첫 화면에서 native 요청은 보내지 않는다.
+    // 초기 로그인 조회는 실행 모드가 확인된 뒤 init에서 진행한다.
     nativeLogin = aiConnectModule.createNativeLoginController({ onChange: () => renderNativeLogin(), onInvalidate: () => invalidateAppConnectView() });
   } catch {
     aiConnectLoadFailed = true;
@@ -1048,6 +1048,10 @@ function renderEventItem(event, meta) {
   const slot = el('div', { className: 'explain-slot', 'aria-live': 'polite' });
   explainSlots.set(event.id, slot);
   const actions = event.supportedActions;
+  const localLab = event.rules.some(rule => ['local_lab_allow', 'local_lab_deny'].includes(rule.id));
+  const explainUnavailable = localLab
+    ? '로컬 SDP 검증용 기록은 ALEPH 계정과 연결되어 있지 않아 AI 설명을 사용할 수 없습니다.'
+    : safeEventForAi(event) ? '' : 'AI 설명에 필요한 사건 근거 또는 규칙이 부족합니다.';
 
   return el('li', { className: 'event', 'data-event-id': event.id }, [
     el('div', { className: 'event-head' }, [
@@ -1067,6 +1071,7 @@ function renderEventItem(event, meta) {
         type: 'button',
         className: 'btn',
         text: 'AI 설명 요청',
+        disabled: Boolean(explainUnavailable),
             testid: `ai-explain-${event.id}`,
         onclick: (e) => requestExplain(event, e.currentTarget),
       }),
@@ -1081,9 +1086,10 @@ function renderEventItem(event, meta) {
         }),
       ),
     ]),
+    explainUnavailable ? el('p', { className: 'muted', text: explainUnavailable }) : null,
     actions.length > 0
       ? el('p', { className: 'muted', text: '이 목록의 버튼은 집행 요청을 보내지 않습니다. AI 제안에서 조치를 직접 준비하고 원천 권한과 대상을 확인해야 하며, 기본 원천 연결은 미지원입니다.' })
-      : el('p', { className: 'muted', testid: `no-supported-actions-${event.id}`, text: '이 기록에는 원천이 지원하는 조치가 없습니다. AI 설명은 볼 수 있지만 조치 제안과 집행 버튼은 나오지 않으며, 이것이 정상입니다.' }),
+      : el('p', { className: 'muted', testid: `no-supported-actions-${event.id}`, text: '이 기록에는 원천이 지원하는 조치가 없습니다. 이 기록에서 제안하거나 집행할 수 있는 조치가 없습니다.' }),
     slot,
   ]);
 }
@@ -1484,9 +1490,9 @@ async function loadAll() {
   }
 }
 
-function init() {
+async function init() {
   const pcHost = document.getElementById('pc-status');
-  if (pcHost) mountPcStatus(pcHost);
+  if (pcHost) mountPcStatus(pcHost, { historyHost: $('pc-status-history') });
   setupNav();
   $('refresh').addEventListener('click', () => loadAll());
   $('diag-load').addEventListener('click', () => loadDiagnostics());
@@ -1516,13 +1522,16 @@ function init() {
   guardStaticArt();
   renderNativeLogin();
   renderAiConnect();
-  loadConnectModule();
+  const connectReady = loadConnectModule();
   renderAiConnection();
   renderVulnerabilities();
   renderAllStudent();
   loadStudentModule();
   loadAppearance();
-  loadAll();
+  await Promise.all([connectReady, loadAll()]);
+  if (nativeLogin?.state.phase === 'idle' && !isLocalPcMode()) {
+    await nativeLogin.check();
+  }
 }
 
 init();

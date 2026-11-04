@@ -210,16 +210,17 @@
 
       <section id="view-records" class="view" role="tabpanel" aria-labelledby="tab-records" hidden>
         <h1>보안 기록</h1>
+        <section id="pc-status-history" class="card provided" aria-label="PC 상태 측정 기록"></section>
         <section class="card provided" aria-labelledby="records-title">
           <h2 id="records-title">접속·XDR 기록 <span class="tag">제공</span></h2>
           <p class="muted">AI 설명은 기록 식별자만 보내며, 실패해도 기록은 그대로 유지됩니다. 조치는 원천 권한 확인과 별도의 사람 확인을 거칩니다.</p>
           <div id="records" aria-live="polite">
             <ul id="records-list" data-testid="records-list" class="records"></ul>
           </div>
-        </section>
-        <section class="card student" aria-labelledby="student-events-title">
-          <h2 id="student-events-title">학생 구현 표시 <span class="tag tag-student">student/extension.mjs · renderEvents</span></h2>
-          <div id="student-events" class="student-slot" aria-live="polite"></div>
+          <details>
+            <summary>학생 기록 필터 및 상세 보기</summary>
+            <div id="student-events" class="student-slot" aria-live="polite"></div>
+          </details>
         </section>
         <section class="card student" aria-labelledby="student-explanation-title">
           <img class="alekov-art art-explain" src="/assets/alekov/alekov-ai-explain.webp" alt="" aria-hidden="true" draggable="false">

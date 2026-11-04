@@ -170,6 +170,7 @@ export function mountPcStatus(
   host,
   {
     fetchImpl = globalThis.fetch?.bind(globalThis),
+    historyHost = host,
     intervalMs = 10000,
     timeoutMs = 10000,
   } = {}
@@ -217,9 +218,9 @@ export function mountPcStatus(
 
   // PC 상태 측정 이력
   const historySection = make('section', '', 'pc-history');
-  historySection.style.marginTop = '28px';
+  if (historyHost === host) historySection.style.marginTop = '28px';
 
-  const historyHeading = make('h3', 'PC 상태 측정 기록');
+  const historyHeading = make(historyHost === host ? 'h3' : 'h2', 'PC 상태 측정 기록');
 
   const historyIntro = make('p', '', 'muted');
   const historyGuide = make(
@@ -303,9 +304,9 @@ export function mountPcStatus(
     refresh,
     label,
     status,
-    grid,
-    historySection
+    grid
   );
+  historyHost.append(historySection);
 
   const history = [];
   let currentPage = 0;

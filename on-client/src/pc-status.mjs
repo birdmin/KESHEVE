@@ -15,11 +15,20 @@ const diskRoot = fileURLToPath(new URL('../', import.meta.url));
 // 네트워크 정보는 인터페이스 이름, IPv4 주소, 기본 게이트웨이만 읽는다.
 const WINDOWS_READ = String.raw`
 $ErrorActionPreference = 'Stop'
+$env:PSModulePath = [IO.Path]::Combine($PSHOME, 'Modules')
 $ProgressPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $result = @{}
 
 function Read-FailureReason($failure) {
-  if ($failure.Exception -is [System.UnauthorizedAccessException] -or
+  for ($exception = $failure.Exception; $null -ne $exception; $exception = $exception.InnerException) {
+    if ($exception -is [System.UnauthorizedAccessException] -or
+        $exception.HResult -eq -2147024891 -or
+        ($exception -is [Microsoft.Management.Infrastructure.CimException] -and $exception.StatusCode -eq 'AccessDenied')) {
+      return 'permission_denied'
+    }
+  }
+  if (
       $failure.FullyQualifiedErrorId -match 'AccessDenied|Unauthorized' -or
       $failure.CategoryInfo.Category -eq 'PermissionDenied') {
     return 'permission_denied'
@@ -73,6 +82,7 @@ try {
 
 $since = (Get-Date).AddHours(-24)
 try {
+  Import-Module Microsoft.PowerShell.Diagnostics -ErrorAction Stop
   $events = @()
   foreach ($log in @('System', 'Application')) {
     try {
@@ -397,6 +407,27 @@ export function createPcStatusReader({
     })();
 
     await Promise.all([cpu, drive, windows]);
+
+    // Windows management APIs can be unavailable while Node can still read IPv4.
+    if (platform === 'win32' && metrics.network.state === 'unavailable') {
+      try {
+        const interfaces = Object.entries(system.networkInterfaces())
+          .map(([name, addresses]) => ({
+            name,
+            ipv4Addresses: addresses
+              .filter(address => address.family === 'IPv4' && !address.internal)
+              .map(address => address.address),
+            defaultGateway: null
+          }))
+          .filter(row => row.ipv4Addresses.length > 0);
+        if (interfaces.length > 0) {
+          const network = normalizeNetwork({state: 'ok', interfaces});
+          if (network.state === 'ok') metrics.network = network;
+        }
+      } catch {
+        // Keep the original failure when the fallback cannot read interfaces.
+      }
+    }
     signal?.throwIfAborted();
 
     return {

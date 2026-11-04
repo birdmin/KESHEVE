@@ -683,7 +683,7 @@ export function createStudentView({ refresh, onChange } = {}) {
       appendText(root, 'p', 'OSV는 알려진 취약점 데이터베이스입니다. 조회 결과가 없더라도 해당 패키지나 앱 전체의 안전성을 보장하지 않습니다.');
       return root;
     },
-    renderAiConnection({ status, mode, data, error, checkedAt, explanationAccepted } = {}) {
+    renderAiConnection({ status, data, error, checkedAt, explanationAccepted } = {}) {
       const root = document.createElement('section');
       const appendText = (parent, tag, value) => {
         const node = document.createElement(tag);
@@ -705,10 +705,6 @@ export function createStudentView({ refresh, onChange } = {}) {
       const safeMessage = (value, fallback) => typeof value === 'string' && value.trim() && value.length <= 500
         && !secretPattern.test(value) && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)
         ? value : fallback;
-      const modeLabel = ({ connected: '연결됨 (connected)', demo: '예제 응답 (demo) · 실제 연결 아님', disconnected: '연결 없음 (disconnected)', unknown: '확인 불가 (unknown)' })[mode]
-        || '확인 불가 (unknown)';
-
-      appendText(root, 'p', `AI 연결 점검 상태: ${modeLabel}`);
       if (status === 'idle') {
         appendText(root, 'p', 'AI 연결 점검 전입니다.');
         appendText(root, 'p', '자동으로 다시 점검하지 않습니다. 점검은 사용자가 「AI 연결 점검」 또는 「현재 API 연결 점검」을 직접 눌러 요청합니다.');
@@ -739,7 +735,12 @@ export function createStudentView({ refresh, onChange } = {}) {
         }[category] || '점검 결과를 확인할 수 없습니다. 이전 결과를 성공으로 간주하지 말고, 필요하면 사용자가 직접 다시 점검하세요.';
         appendText(root, 'p', `AI 연결 점검 실패 (${code})`);
         appendText(root, 'p', `오류 안내: ${message}`);
-        appendText(root, 'p', guidance);
+        if (code === 'ON_AI_PROVISIONING_PENDING') {
+          appendText(root, 'p', '보호 현황에서 「현재 로그인 확인」으로 ALEPH 계정을 확인하고, AI 연결의 앱 승인 상태를 확인하세요.');
+          appendText(root, 'p', '계정과 앱 승인이 확인되면 「현재 API 연결 점검」을 다시 누르세요. 같은 오류가 반복되면 담당자에게 오류 코드와 발생 시각을 전달하세요.');
+        } else {
+          appendText(root, 'p', guidance);
+        }
         appendText(root, 'p', '자동 재점검은 하지 않습니다. 다시 확인하려면 제공 화면의 점검 버튼을 직접 누르세요.');
         return root;
       }
@@ -752,8 +753,7 @@ export function createStudentView({ refresh, onChange } = {}) {
         appendText(root, 'p', 'AI 연결 점검 응답 형식을 확인할 수 없습니다. 연결 성공으로 간주하지 않습니다.');
         return root;
       }
-      appendText(root, 'p', data.audienceAuthorization === 'test' ? '시험 연결 점검(test)' : '앱 권한 확인 후 점검(verified)');
-      if (mode === 'demo') appendText(root, 'p', '예제 응답(demo)이며 실제 서비스 연결 결과가 아닙니다.');
+      appendText(root, 'p', data.audienceAuthorization === 'test' ? '시험 연결 점검(test)' : 'AI 연결 점검 성공 (verified)');
       appendText(root, 'p', `모델 수: ${Number.isInteger(data.modelCount) && data.modelCount >= 0 ? data.modelCount : '확인 불가'}`);
       appendText(root, 'p', `점검 시각: ${safeMessage(checkedAt, '확인 불가')}`);
       appendText(root, 'p', '이 점검에서는 AI 연결과 모델 응답만 확인했습니다. 사건 설명은 아직 실행하지 않았습니다.');
